@@ -1,18 +1,24 @@
 import { ApolloServer } from '@apollo/server';
-import { startStandaloneServer } from '@apollo/server/standalone';
 import { readFileSync } from 'fs';
 import { resolvers } from './resolvers.js';
 import { ProductDataSource, CartDataSource, UserDataSource } from './datasources.js';
+import cors from 'cors';
+import express from 'express';
+import http from 'http';
+import { ApolloServerPluginDrainHttpServer } from '@apollo/server/plugin/drainHttpServer';
+import { expressMiddleware } from '@apollo/server/express4';
+const app = express();
+const httpServer = http.createServer(app);
 // we must convert the file Buffer to a UTF-8 string
 const typeDefs = readFileSync('schema.graphql', 'utf8');
 const server = new ApolloServer({
     typeDefs,
-    resolvers
+    resolvers,
+    plugins: [ApolloServerPluginDrainHttpServer({ httpServer })],
 });
-const { url } = await startStandaloneServer(server, {
-    listen: { port: 4000 },
+await server.start();
+app.use('/graphql', cors({ origin: ['*'] }), express.json(), expressMiddleware(server, {
     context: async ({ req, res }) => {
-        console.log(req);
         return {
             dataSources: {
                 cartAPI: new CartDataSource(),
@@ -20,6 +26,7 @@ const { url } = await startStandaloneServer(server, {
                 userAPI: new UserDataSource(),
             },
         };
-    }
-});
-console.log(`🚀  Server ready at: ${url}`);
+    },
+}));
+await new Promise((resolve) => httpServer.listen({ port: 4000 }, resolve));
+console.log(`🚀 Server ready at http://localhost:4000/`);
